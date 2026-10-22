@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from utils.db_connection import fetch_all, fetch_one, get_table_counts
+from utils.crud import create_team, update_team, delete_team, create_player, update_player, delete_player
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title="Cricbuzz LiveStats | Cricket, Decoded", page_icon="🏏", layout="wide", initial_sidebar_state="collapsed")
@@ -116,12 +117,12 @@ except (sqlite3.Error, OSError, KeyError) as error:
     st.stop()
 
 # Native Streamlit navigation buttons: every click updates the active section.
-PAGES = ["🏟️ Command Center", "🏏 Match Center", "👤 Player Matrix", "💻 SQL Intelligence", "📊 Team Analytics"]
+PAGES = ["🏟️ Command Center", "🏏 Match Center", "👤 Player Matrix", "💻 SQL Intelligence", "📊 Team Analytics", "🛠️ Data Manager"]
 if st.session_state.get("active_page") not in PAGES:
     st.session_state["active_page"] = PAGES[0]
 
 st.markdown('<div class="brand">🏏 Cricbuzz <span>LiveStats</span></div>', unsafe_allow_html=True)
-nav_columns = st.columns(5, gap="small")
+nav_columns = st.columns(len(PAGES), gap="small")
 for nav_col, nav_page in zip(nav_columns, PAGES):
     with nav_col:
         if st.button(
@@ -267,7 +268,7 @@ elif page == "💻 SQL Intelligence":
         else: st.info("Choose a SQL recipe and click Run SQL Query.")
     st.markdown('<div class="status">🔐 Queries are predefined, read-only recipes. Arbitrary SQL execution and database modifications are disabled in this initial version.</div>',unsafe_allow_html=True)
 
-else:
+elif page == "📊 Team Analytics":
     st.markdown('<div class="section-tag">TEAM INTELLIGENCE / COMPARISONS</div>',unsafe_allow_html=True)
     st.title("TEAM ANALYTICS")
     teams=df("""SELECT t.team_name AS Team,t.country AS Country,COUNT(DISTINCT p.player_id) AS Players
@@ -277,6 +278,113 @@ else:
         chart(px.bar(teams,x="Team",y="Players",color="Team",title="Registered players by team"))
     st.subheader("Match results")
     show_table(matches[["Team_1","Team_2","Format","Date","Status","Result"]] if not matches.empty else matches)
+
+
+elif page == "🛠️ Data Manager":
+    st.markdown('<div class="section-tag">DATABASE / SECURE RECORD MANAGEMENT</div>', unsafe_allow_html=True)
+    st.title("CRICKET DATA MANAGER")
+    st.caption("Create, view, update and delete team and player records in your local SQLite database. Changes persist after refresh.")
+    entity = st.radio("Manage", ["Teams", "Players"], horizontal=True)
+    if entity == "Teams":
+        records = df("SELECT team_id, team_name, country FROM teams ORDER BY team_name")
+        show_table(records)
+        action = st.selectbox("Action", ["Create", "Update", "Delete"], key="team_action")
+        if action == "Create":
+            with st.form("create_team_form", clear_on_submit=True):
+                name = st.text_input("Team name", max_chars=100)
+                country = st.text_input("Country", max_chars=100)
+                submitted = st.form_submit_button("CREATE TEAM")
+            if submitted:
+                try:
+                    create_team(name, country)
+                    st.success("Team created successfully.")
+                    st.rerun()
+                except (ValueError, sqlite3.IntegrityError) as exc:
+                    st.error(str(exc))
+        elif not records.empty:
+            options = dict(zip(records.team_id.astype(int), records.team_name))
+            selected_id = st.selectbox("Choose team", list(options), format_func=lambda i: options[i], key="team_selected")
+            current = records[records.team_id == selected_id].iloc[0]
+            if action == "Update":
+                with st.form("update_team_form"):
+                    name = st.text_input("Team name", value=str(current.team_name), max_chars=100)
+                    country = st.text_input("Country", value=str(current.country), max_chars=100)
+                    submitted = st.form_submit_button("SAVE CHANGES")
+                if submitted:
+                    try:
+                        update_team(selected_id, name, country)
+                        st.success("Team updated.")
+                        st.rerun()
+                    except (ValueError, sqlite3.IntegrityError) as exc:
+                        st.error(str(exc))
+            else:
+                st.warning("Deletion is blocked when a team is referenced by players or matches.")
+                confirmed = st.checkbox("I understand this will permanently delete the selected team", key="confirm_team")
+                if st.button("DELETE TEAM", disabled=not confirmed):
+                    try:
+                        delete_team(selected_id)
+                        st.success("Team deleted.")
+                        st.rerun()
+                    except (ValueError, sqlite3.IntegrityError) as exc:
+                        st.error(str(exc))
+        else:
+            st.info("Create a team first.")
+    else:
+        records = df("""SELECT p.player_id,p.full_name,p.team_id,COALESCE(t.team_name,'Unassigned') AS team,
+          p.role,p.country FROM players p LEFT JOIN teams t ON t.team_id=p.team_id ORDER BY p.full_name""")
+        show_table(records.drop(columns=["team_id"]))
+        teams_list = df("SELECT team_id,team_name FROM teams ORDER BY team_name")
+        team_options = {None: "Unassigned"}
+        team_options.update({int(r.team_id): str(r.team_name) for r in teams_list.itertuples()})
+        action = st.selectbox("Action", ["Create", "Update", "Delete"], key="player_action")
+        if action == "Create":
+            with st.form("create_player_form", clear_on_submit=True):
+                name = st.text_input("Player full name", max_chars=120)
+                team_id = st.selectbox("Team", list(team_options), format_func=lambda i: team_options[i])
+                role = st.selectbox("Role", ["Batter", "Bowler", "All-rounder", "Wicketkeeper", "Wicketkeeper-batter"])
+                country = st.text_input("Country", max_chars=100)
+                submitted = st.form_submit_button("CREATE PLAYER")
+            if submitted:
+                try:
+                    create_player(name, team_id, role, country)
+                    st.success("Player created.")
+                    st.rerun()
+                except (ValueError, sqlite3.IntegrityError) as exc:
+                    st.error(str(exc))
+        elif not records.empty:
+            options = dict(zip(records.player_id.astype(int), records.full_name))
+            selected_id = st.selectbox("Choose player", list(options), format_func=lambda i: options[i], key="player_selected")
+            current = records[records.player_id == selected_id].iloc[0]
+            if action == "Update":
+                with st.form("update_player_form"):
+                    name = st.text_input("Player full name", value=str(current.full_name), max_chars=120)
+                    current_team = None if pd.isna(current.team_id) else int(current.team_id)
+                    team_id = st.selectbox("Team", list(team_options), index=list(team_options).index(current_team), format_func=lambda i: team_options[i])
+                    roles = ["Batter", "Bowler", "All-rounder", "Wicketkeeper", "Wicketkeeper-batter"]
+                    if current.role not in roles:
+                        roles.insert(0, str(current.role))
+                    role = st.selectbox("Role", roles, index=roles.index(current.role))
+                    country = st.text_input("Country", value=str(current.country), max_chars=100)
+                    submitted = st.form_submit_button("SAVE CHANGES")
+                if submitted:
+                    try:
+                        update_player(selected_id, name, team_id, role, country)
+                        st.success("Player updated.")
+                        st.rerun()
+                    except (ValueError, sqlite3.IntegrityError) as exc:
+                        st.error(str(exc))
+            else:
+                st.warning("Players referenced in batting or bowling statistics cannot be deleted.")
+                confirmed = st.checkbox("I understand this permanently deletes the selected player", key="confirm_player")
+                if st.button("DELETE PLAYER", disabled=not confirmed):
+                    try:
+                        delete_player(selected_id)
+                        st.success("Player deleted.")
+                        st.rerun()
+                    except (ValueError, sqlite3.IntegrityError) as exc:
+                        st.error(str(exc))
+        else:
+            st.info("Create a player first.")
 
 st.divider()
 st.caption("CRICBUZZ LIVESTATS · CINEMATIC CRICKET INTELLIGENCE · SQLITE + STREAMLIT + PLOTLY · SYNTHETIC DEMO DATA · NOT LIVE")
