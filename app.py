@@ -216,16 +216,17 @@ elif page == "💻 SQL Intelligence":
     st.markdown('<div class="section-tag">ENGINEERING / QUERY WORKSPACE</div>',unsafe_allow_html=True)
     st.title("SQL INTELLIGENCE LAB")
     st.caption("Safe, read-only SQL analytics backed by your project's actual SQLite tables.")
-    recipes={
-        "Top run scorers":"SELECT p.full_name AS player, SUM(b.runs) AS total_runs FROM batting_stats b JOIN players p ON p.player_id=b.player_id GROUP BY p.player_id,p.full_name ORDER BY total_runs DESC LIMIT 20",
-        "Top wicket takers":"SELECT p.full_name AS player, SUM(b.wickets) AS total_wickets FROM bowling_stats b JOIN players p ON p.player_id=b.player_id GROUP BY p.player_id,p.full_name ORDER BY total_wickets DESC LIMIT 20",
-        "Players by team":"SELECT t.team_name AS team, COUNT(p.player_id) AS players FROM teams t LEFT JOIN players p ON p.team_id=t.team_id GROUP BY t.team_id,t.team_name ORDER BY players DESC",
-        "Matches by format":"SELECT match_type AS format, COUNT(*) AS matches FROM matches GROUP BY match_type ORDER BY matches DESC",
-        "Runs by innings":"SELECT m.match_date AS match_date,t.team_name AS batting_team,i.total_runs AS runs FROM innings i JOIN matches m ON m.match_id=i.match_id JOIN teams t ON t.team_id=i.batting_team_id ORDER BY m.match_date DESC",
-        "Venues by capacity":"SELECT venue_name AS venue,city,country,capacity FROM venues ORDER BY capacity DESC",
-        "Player roles":"SELECT role, COUNT(*) AS players FROM players GROUP BY role ORDER BY players DESC",
-        "Batting strike rates":"SELECT p.full_name AS player,SUM(b.runs) AS runs,SUM(b.balls_faced) AS balls,ROUND(100.0*SUM(b.runs)/NULLIF(SUM(b.balls_faced),0),2) AS strike_rate FROM batting_stats b JOIN players p ON p.player_id=b.player_id GROUP BY p.player_id,p.full_name ORDER BY strike_rate DESC"
+    # Load all 25 version-controlled, read-only SQL recipes from disk.
+    query_folder = ROOT / "database" / "queries"
+    query_files = sorted(query_folder.glob("*.sql"))
+    recipes = {
+        path.stem.replace("_", " ").title(): path.read_text(encoding="utf-8-sig")
+        for path in query_files
     }
+    if not recipes:
+        st.error("No SQL recipes found in database/queries. Restore the 25 .sql files.")
+        st.stop()
+    st.caption(f"{len(recipes)} SQL recipes available · Executed against local SQLite")
     left,right=st.columns([1.05,1.2])
     with left:
         choice=st.selectbox("Query recipe",list(recipes))
