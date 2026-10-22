@@ -10,6 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from utils.cricket_api import get_current_matches, format_scores, CricketAPIError
 from utils.db_connection import fetch_all, fetch_one, get_table_counts
 from utils.crud import create_team, update_team, delete_team, create_player, update_player, delete_player
 
@@ -388,3 +389,33 @@ elif page == "🛠️ Data Manager":
 
 st.divider()
 st.caption("CRICBUZZ LIVESTATS · CINEMATIC CRICKET INTELLIGENCE · SQLITE + STREAMLIT + PLOTLY · SYNTHETIC DEMO DATA · NOT LIVE")
+
+
+# LIVE_CRICKET_INTEGRATION_V1: API-powered section, independent of SQLite demo data
+st.divider()
+with st.expander("🔴 LIVE CRICKET SCORES · CricketData API", expanded=False):
+    st.caption("Provider-supplied current matches. Separate from synthetic SQLite demo records. Scores may be delayed.")
+    if st.button("🔄 Refresh live cricket scores", key="refresh_live_cricket"):
+        st.session_state.pop("live_cricket_matches", None)
+    if "live_cricket_matches" not in st.session_state:
+        try:
+            with st.spinner("Fetching current cricket matches..."):
+                st.session_state["live_cricket_matches"] = get_current_matches()
+            st.session_state.pop("live_cricket_error", None)
+        except CricketAPIError as exc:
+            st.session_state["live_cricket_error"] = str(exc)
+    if st.session_state.get("live_cricket_error"):
+        st.warning(st.session_state["live_cricket_error"])
+    elif "live_cricket_matches" in st.session_state:
+        live_matches = st.session_state["live_cricket_matches"]
+        st.caption(f"{len(live_matches)} matches returned by the provider")
+        if not live_matches:
+            st.info("The provider returned no current matches.")
+        for match in live_matches[:20]:
+            if not isinstance(match, dict):
+                continue
+            with st.container(border=True):
+                st.subheader(str(match.get("name") or "Cricket match"))
+                st.caption(f"{match.get('matchType', 'Format unknown')} · {match.get('venue', 'Venue unknown')}")
+                st.write(str(match.get("status") or "Status unavailable"))
+                st.markdown("**" + format_scores(match) + "**")
