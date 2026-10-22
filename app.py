@@ -39,6 +39,8 @@ h2{color:#f6fcff!important}
 .stButton>button{background:linear-gradient(110deg,#17ef98,#22c55e);border:0;border-radius:11px;color:#071a17;font-weight:800;min-height:46px;box-shadow:0 0 22px #12e99735;transition:.2s}
 .stButton>button:hover{background:#7affcb;color:#061911;transform:translateY(-2px);box-shadow:0 0 30px #22c55e77}
 .stButton>button:focus{color:#071a17}
+button[kind="secondary"]{background:rgba(11,28,45,.94)!important;color:#d4e9f5!important;border:1px solid #28546b!important;box-shadow:none!important}
+button[kind="secondary"]:hover{border-color:#22f4a4!important;color:#22f4a4!important;transform:none!important}
 [data-testid="stMetric"]{background:linear-gradient(145deg,rgba(18,41,58,.95),rgba(10,25,41,.95));border:1px solid #28526a;border-radius:16px;padding:18px}
 [data-testid="stMetricLabel"] *{color:#b7d0e0!important}
 [data-testid="stMetricValue"]{color:#2cf5ad!important;font-family:'JetBrains Mono',monospace}
@@ -113,11 +115,24 @@ except (sqlite3.Error, OSError, KeyError) as error:
     st.info("Run `python database/init_db.py` from the project root and check the database seed.")
     st.stop()
 
-left,right = st.columns([1.2,3.3],vertical_alignment="center")
-with left:
-    st.markdown('<div class="brand">🏏 Cricbuzz <span>LiveStats</span></div>',unsafe_allow_html=True)
-with right:
-    page = st.radio("Navigate",["🏟️ Command Center","🏏 Match Center","👤 Player Matrix","💻 SQL Intelligence","📊 Team Analytics"],horizontal=True,label_visibility="collapsed")
+# Native Streamlit navigation buttons: every click updates the active section.
+PAGES = ["🏟️ Command Center", "🏏 Match Center", "👤 Player Matrix", "💻 SQL Intelligence", "📊 Team Analytics"]
+if st.session_state.get("active_page") not in PAGES:
+    st.session_state["active_page"] = PAGES[0]
+
+st.markdown('<div class="brand">🏏 Cricbuzz <span>LiveStats</span></div>', unsafe_allow_html=True)
+nav_columns = st.columns(5, gap="small")
+for nav_col, nav_page in zip(nav_columns, PAGES):
+    with nav_col:
+        if st.button(
+            nav_page,
+            key="nav_" + str(PAGES.index(nav_page)),
+            use_container_width=True,
+            type="primary" if st.session_state["active_page"] == nav_page else "secondary",
+        ):
+            st.session_state["active_page"] = nav_page
+            st.rerun()
+page = st.session_state["active_page"]
 st.markdown('<div class="navline"><b>● CRICKET INTELLIGENCE PLATFORM</b> &nbsp; / &nbsp; INTERACTIVE SPORTS ANALYTICS &nbsp; / &nbsp; LOCAL DEMO DATABASE</div>',unsafe_allow_html=True)
 
 if page == "🏟️ Command Center":
@@ -125,17 +140,14 @@ if page == "🏟️ Command Center":
     c1,c2,c3 = st.columns([1.15,1.15,2.7])
     with c1:
         if st.button("⚡ LAUNCH INTELLIGENCE",use_container_width=True):
-            st.session_state["jump"] = "matches"
+            st.session_state["active_page"] = "🏏 Match Center"
+            st.rerun()
     with c2:
         if st.button("⌘ QUERY DATABASE",use_container_width=True):
-            st.session_state["jump"] = "sql"
+            st.session_state["active_page"] = "💻 SQL Intelligence"
+            st.rerun()
     with c3:
         st.caption("Real database statistics below · all current records are synthetic examples")
-    jump = st.session_state.pop("jump", None)
-    if jump == "matches":
-        st.info("Choose **🏏 Match Center** in the top navigation to explore scorecards.")
-    elif jump == "sql":
-        st.info("Choose **💻 SQL Intelligence** in the top navigation to run queries.")
     st.markdown('<div class="section-tag">01 / CRICKET COMMAND CENTER</div>',unsafe_allow_html=True)
     st.subheader("Your match intelligence, at a glance")
     a,b,c,d=st.columns(4)
